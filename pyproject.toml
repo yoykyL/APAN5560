@@ -1,0 +1,21 @@
+[project]
+name = "sps-genai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "kl3778", email = "kl3778@columbia.edu" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.142.2",
+    "jupyter>=1.1.1",
+    "pydantic>=2.13.5",
+]
+
+[project.scripts]
+sps-genai = "sps_genai:main"
+
+[build-system]
+requires = ["uv_build>=0.12.22,<0.13.0"]
+build-backend = "uv_build"
