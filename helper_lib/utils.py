@@ -1,7 +1,4 @@
 """Small utilities: device selection and plotting."""
-import matplotlib
-
-matplotlib.use("Agg")  # save plots to files without opening a window
 import matplotlib.pyplot as plt
 import torch
 
@@ -26,5 +23,14 @@ def plot_history(history, path="training_history.png"):
     ax2.plot(epochs, history["val_acc"], label="validation")
     ax2.set_xlabel("Epoch"); ax2.set_ylabel("Accuracy (%)"); ax2.legend()
     fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+def plot_gan_losses(history, path="gan_losses.png"):
+    """Plot the discriminator (D) and generator (G) losses and save to `path`."""
+    fig = plt.figure()
+    plt.plot(history["step"], history["d_loss"], label="Discriminator (D) loss")
+    plt.plot(history["step"], history["g_loss"], label="Generator (G) loss")
+    plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.legend()
     fig.savefig(path)
     plt.close(fig)

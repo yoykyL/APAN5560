@@ -8,12 +8,14 @@ from typing import Union
 
 import spacy
 import torch
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from PIL import Image
 from pydantic import BaseModel
 
 from app.bigram_model import BigramModel
-from helper_lib import CLASSES, get_model, get_transform, load_checkpoint   # NEW
+from torchvision.utils import save_image
+from helper_lib import CLASSES, get_model, get_transform, load_checkpoint, sample_images
 
 app = FastAPI()
 
@@ -63,7 +65,7 @@ def get_similarity(request: SimilarityRequest):
     return {"word1": request.word1, "word2": request.word2, "similarity": float(score)}
 
 
-# ======================= NEW: CNN classifier =======================
+# ======================= CNN classifier =======================
 MODEL_PATH = Path(__file__).parent / "checkpoints" / "best_model.pth"
 cnn_model = get_model("CNN")
 load_checkpoint(cnn_model, None, MODEL_PATH, "cpu")  # no optimizer needed to predict
@@ -79,3 +81,23 @@ async def classify_image(file: UploadFile = File(...)):
         probs = torch.softmax(cnn_model(x), dim=1)[0]
     idx = int(probs.argmax())
     return {"predicted_class": CLASSES[idx], "confidence": round(float(probs[idx]), 4)}
+
+# ======================= GAN =======================
+GAN_PATH = Path(__file__).parent / "checkpoints" / "gan_generator.pth"
+gan_model = get_model("GAN")
+gan_ready = GAN_PATH.exists()
+if gan_ready:
+    gan_model.generator.load_state_dict(torch.load(GAN_PATH, map_location="cpu"))
+
+
+@app.get("/generate_digits", response_class=Response,
+         responses={200: {"content": {"image/png": {}}}})
+def generate_digits(num_samples: int = Query(16, ge=1, le=100)):
+    """Generate hand-written digits with the GAN and return them as a PNG grid."""
+    if not gan_ready:
+        raise HTTPException(status_code=503,
+                            detail="GAN not trained yet. Run: uv run python train_gan.py")
+    images = sample_images(gan_model, "cpu", num_samples)
+    buffer = io.BytesIO()
+    save_image(images, buffer, format="png", nrow=min(num_samples, 8), padding=2)
+    return Response(content=buffer.getvalue(), media_type="image/png")

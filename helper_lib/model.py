@@ -92,7 +92,57 @@ class EnhancedCNN(nn.Module):
         return self.classifier(self.features(x))
 
 
-MODELS = {"FCNN": FCNN, "CNN": SimpleCNN, "EnhancedCNN": EnhancedCNN}
+Z_DIM = 100  # size of the random noise (latent) vector
+
+
+class Generator(nn.Module):
+    """Turns a noise vector (B x 100) into an image (B x 1 x 28 x 28)."""
+
+    def __init__(self, z_dim=Z_DIM):
+        super().__init__()
+        self.z_dim = z_dim
+        self.fc = nn.Linear(z_dim, 7 * 7 * 128)       # fully connected to 7 x 7 x 128
+        self.deconv1 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.deconv2 = nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1)
+
+    def forward(self, z):
+        x = self.fc(z).view(-1, 128, 7, 7)            # B x 128 x 7 x 7 (reshape)
+        x = F.relu(self.bn1(self.deconv1(x)))          # B x 64 x 14 x 14
+        return torch.tanh(self.deconv2(x))             # B x 1 x 28 x 28, values in [-1, 1]
+
+
+class Discriminator(nn.Module):
+    """Takes an image (B x 1 x 28 x 28) and outputs the probability it is real (B x 1)."""
+
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
+        self.fc = nn.Linear(128 * 7 * 7, 1)
+
+    def forward(self, x):
+        x = F.leaky_relu(self.conv1(x), 0.2)                 # B x 64 x 14 x 14
+        x = F.leaky_relu(self.bn2(self.conv2(x)), 0.2)       # B x 128 x 7 x 7
+        x = torch.flatten(x, 1)                              # B x 6272
+        return torch.sigmoid(self.fc(x))                     # B x 1, real/fake probability
+
+
+class GAN(nn.Module):
+    """Holds the generator and discriminator so get_model("GAN") returns one object."""
+
+    def __init__(self, z_dim=Z_DIM):
+        super().__init__()
+        self.z_dim = z_dim
+        self.generator = Generator(z_dim)
+        self.discriminator = Discriminator()
+
+    def forward(self, z):
+        return self.generator(z)
+
+
+MODELS = {"FCNN": FCNN, "CNN": SimpleCNN, "EnhancedCNN": EnhancedCNN, "GAN": GAN}
 
 
 def get_model(model_name):

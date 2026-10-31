@@ -1,6 +1,6 @@
 """Training loop with checkpoint support."""
 from tqdm import tqdm
-
+import torch
 from .checkpoints import save_checkpoint
 from .evaluator import evaluate_model
 
@@ -49,6 +49,51 @@ def train_model(model, train_loader, val_loader, criterion, optimizer,
             save_checkpoint(model, optimizer, epoch, val_loss, val_acc,
                             checkpoint_dir, filename="best_model.pth")
             print(f"  New best model (val acc {val_acc:.2f}%) saved")
+
+    model.history = history
+    return model
+
+
+
+
+def train_gan(model, data_loader, criterion, optimizer, device="cpu", epochs=10):
+    """Train a GAN: alternate discriminator and generator updates on each batch."""
+    opt_gen, opt_disc = optimizer
+    gen, disc = model.generator.to(device), model.discriminator.to(device)
+    gen.train(); disc.train()
+    history = {"step": [], "d_loss": [], "g_loss": []}
+
+    for epoch in range(epochs):
+        loop = tqdm(data_loader, desc=f"Epoch {epoch + 1}/{epochs}")
+        for batch_number, (real, _) in enumerate(loop):
+            real = real.to(device)
+            batch_size = real.size(0)
+            real_labels = torch.ones(batch_size, 1, device=device)
+            fake_labels = torch.zeros(batch_size, 1, device=device)
+
+            # Train Discriminator: real images -> 1, generated images -> 0 #
+            noise = torch.randn(batch_size, model.z_dim, device=device)
+            fake = gen(noise)
+            loss_disc = (criterion(disc(real), real_labels)
+                         + criterion(disc(fake.detach()), fake_labels))  # detach: don't update G here
+
+            opt_disc.zero_grad()
+            loss_disc.backward()
+            opt_disc.step()
+
+            # Train Generator: fool the discriminator into outputting 1 for fakes #
+            loss_gen = criterion(disc(fake), real_labels)
+
+            opt_gen.zero_grad()
+            loss_gen.backward()
+            opt_gen.step()
+
+            if batch_number % 100 == 0:
+                history["step"].append(epoch + batch_number / len(data_loader))
+                history["d_loss"].append(loss_disc.item())
+                history["g_loss"].append(loss_gen.item())
+                loop.set_postfix(d_loss=f"{loss_disc.item():.4f}",
+                                 g_loss=f"{loss_gen.item():.4f}")
 
     model.history = history
     return model

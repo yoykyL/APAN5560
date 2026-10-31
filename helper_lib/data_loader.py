@@ -44,3 +44,15 @@ def get_train_val_loaders(data_dir, batch_size=32, val_size=5000, seed=42):
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader
+
+def get_mnist_loader(data_dir, batch_size=64):
+    """Return a DataLoader of MNIST training digits (1 x 28 x 28) for the GAN.
+
+    Pixels are scaled to [-1, 1] to match the generator's Tanh output.
+    """
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,)),
+    ])
+    dataset = datasets.MNIST(root=data_dir, train=True, download=True, transform=transform)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
