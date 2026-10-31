@@ -1,91 +1,48 @@
 """
-Assignment 2 - Part 2: train the CNN on CIFAR-10 (same loop as Practical 3).
-Saves weights to cnn_cifar10.pth, used by main.py.
+Assignment 2 - Part 2: train the CNN on CIFAR-10 using helper_lib.
+
+Saves a checkpoint every epoch to checkpoints/, and the best model
+(highest validation accuracy) to checkpoints/best_model.pth, used by main.py.
+
+Run:  uv run python train_cnn.py
 """
-import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
-import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 
-from cnn_model import SimpleCNN, IMAGE_SIZE
+from helper_lib.checkpoints import load_checkpoint
+from helper_lib.data_loader import get_data_loader, get_train_val_loaders
+from helper_lib.evaluator import evaluate_model
+from helper_lib.model import get_model
+from helper_lib.trainer import train_model
+from helper_lib.utils import get_device, plot_history
 
-# ---- Device (same as the notebook) ----
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+device = get_device()
 print("Using device:", device)
 
-# ---- Data ----
-# CIFAR-10 images are 32x32; resize to 64x64 to match the assignment architecture.
-transform = transforms.Compose([
-    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-])
+# Load data: 45,000 train / 5,000 validation images, plus the 10,000 test images
+train_loader, val_loader = get_train_val_loaders("data", batch_size=64)
+test_loader = get_data_loader("data", batch_size=64, train=False)
 
-train_set = torchvision.datasets.CIFAR10(root="./data", train=True, download=True, transform=transform)
-test_set = torchvision.datasets.CIFAR10(root="./data", train=False, download=True, transform=transform)
-
-train_loader = torch.utils.data.DataLoader(train_set, batch_size=32, shuffle=True)
-test_loader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False)
-
-print("Length of the train dataset:", len(train_set))
-images, labels = next(iter(train_loader))
-print("Shape of the first batch:", images.shape)  # [32, 3, 64, 64]
-
-# ---- Model, loss, optimizer ----
-model = SimpleCNN().to(device)
-print(model)
+# Initialize model and training components
+model = get_model("CNN")
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# ---- Training ----
-num_epochs = 10
-losses, steps = [], []
+# Option 1: Train from scratch with checkpoint saving
+trained_model = train_model(
+    model, train_loader, val_loader, criterion, optimizer,
+    device=device, epochs=10, checkpoint_dir="checkpoints",
+)
 
-model.train()
-for epoch in range(num_epochs):
-    running_loss = 0.0
-    loop = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}")
-    for i, (inputs, labels) in enumerate(loop):
-        inputs, labels = inputs.to(device), labels.to(device)
+# Option 2: Resume training from a checkpoint (comment out Option 1 first)
+# start_epoch, _, _ = load_checkpoint(model, optimizer, "checkpoints/model_epoch_005.pth", device)
+# trained_model = train_model(model, train_loader, val_loader, criterion, optimizer,
+#                             device=device, epochs=5, start_epoch=start_epoch)
 
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+plot_history(trained_model.history, "training_history.png")
 
-        running_loss += loss.item()
-        if i % 100 == 99:
-            losses.append(running_loss / (i + 1))
-            steps.append(epoch + (i + 1) / len(train_loader))
-            loop.set_postfix(loss=running_loss / (i + 1))
-
-print("Finished Training")
-
-plt.plot(steps, losses)
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.savefig("training_loss.png")
-
-# ---- Evaluation ----
-model.eval()
-correct, total = 0, 0
-with torch.no_grad():
-    for inputs, labels in test_loader:
-        inputs, labels = inputs.to(device), labels.to(device)
-        predicted = model(inputs).argmax(dim=1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-print(f"Accuracy of the network on the 10000 test images: {100 * correct / total:.2f}%")
-
-# ---- Save for the API ----
-torch.save(model.state_dict(), "cnn_cifar10.pth")
-print("Saved model to cnn_cifar10.pth")
+# Evaluate the best model (highest validation accuracy) on the test set
+best_epoch, _, best_val_acc = load_checkpoint(model, None, "checkpoints/best_model.pth", device)
+avg_loss, accuracy = evaluate_model(model, test_loader, criterion, device)
+print(f"Best model from epoch {best_epoch} (val acc {best_val_acc:.2f}%)")
+print(f"Test Loss: {avg_loss:.4f}  Test Accuracy: {accuracy:.2f}%")

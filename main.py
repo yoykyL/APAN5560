@@ -3,17 +3,17 @@ Class Activity 1 API + CIFAR-10 CNN classifier (Assignment 2).
 Run:  uv run fastapi dev    then open http://127.0.0.1:8000/docs
 """
 import io
+from pathlib import Path
 from typing import Union
 
 import spacy
 import torch
-import torchvision.transforms as transforms
 from fastapi import FastAPI, File, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
 from app.bigram_model import BigramModel
-from cnn_model import SimpleCNN, CLASSES, IMAGE_SIZE   # NEW
+from helper_lib import CLASSES, get_model, get_transform, load_checkpoint   # NEW
 
 app = FastAPI()
 
@@ -64,16 +64,11 @@ def get_similarity(request: SimilarityRequest):
 
 
 # ======================= NEW: CNN classifier =======================
-cnn_model = SimpleCNN()
-cnn_model.load_state_dict(torch.load("cnn_cifar10.pth", map_location="cpu"))
+MODEL_PATH = Path(__file__).parent / "checkpoints" / "best_model.pth"
+cnn_model = get_model("CNN")
+load_checkpoint(cnn_model, None, MODEL_PATH, "cpu")  # no optimizer needed to predict
 cnn_model.eval()  # inference mode
-
-# Must match the preprocessing used in train_cnn.py
-cnn_transform = transforms.Compose([
-    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-])
+cnn_transform = get_transform()  # same preprocessing as training
 
 
 @app.post("/classify_image")

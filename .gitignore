@@ -9,3 +9,9 @@ wheels/
 # Virtual environments
 .venv
 data/
+
+# macOS
+.DS_Store
+
+# Training checkpoints: keep only the best model in the repo
+checkpoints/model_epoch_*.pth
